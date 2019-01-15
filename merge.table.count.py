@@ -13,7 +13,6 @@ requiredNamed.add_argument("-o", "--output", type=str, help="The concatenated fi
 args = parser.parse_args()
 
 file_list = []
-# my_list = glob.glob('*gene2anno2depth.summary.txt')
 my_list = glob.glob('*'+"{0}".format(args.input))
 
 for name in my_list:
