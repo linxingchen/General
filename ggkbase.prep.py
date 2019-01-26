@@ -22,14 +22,20 @@ parser.add_argument("-m", "--metaspades", action='store_true', default=False,
                     help="do metaspades assembly (default = True, if provided)")
 parser.add_argument("-i", "--idba", action='store_true', default=False,
                     help="do idba_ud assembly (default = True, if provided)")
+parser.add_argument("-q", "--quality", type=str, help="run process_reads_bbmap.rb")
 parser.add_argument("-e", "--email", type=str, help="email address to send information when job is finished")
 args = parser.parse_args()
+
+name = args.basename
+
+if args.quality:
+    os.system('process_reads_bbmap.rb --basename={0} -c'.format(name))
 
 
 # Check cluster highmem queue
 def highmem_is_free():
-    os.system('qstat -u "**" > 0.txt')
-    high = open('0.txt', 'r')
+    os.system('qstat -u "**" > {0}.0.txt'.format(name))
+    high = open('{0}.0.txt'.format(name), 'r')
     high_jobs = []
     for line in high.readlines():
         if line.startswith('job-ID') is False and line.startswith('-') is False:
@@ -41,8 +47,8 @@ def highmem_is_free():
 
 # Check cluster normal queue
 def queue_is_busy(a):
-    os.system('qstat -u "**" > 1.txt')
-    qstat = open('1.txt', 'r')
+    os.system('qstat -u "**" > {0}.1.txt'.format(name))
+    qstat = open('{0}.1.txt'.format(name), 'r')
     total_qw_jobs = []
     for line in qstat.readlines():
         if line.startswith('job-ID') is False and line.startswith('-') is False:
@@ -53,7 +59,6 @@ def queue_is_busy(a):
 
 
 # Run metaspades assembly
-name = args.basename
 threads = args.threads
 on_cluster = []
 pwd = os.getcwd()
@@ -61,7 +66,8 @@ pwd = os.getcwd()
 if args.metaspades:
     if highmem_is_free():
         my_job = open("{0}".format(name), 'w')
-        print("/home/linking/softwares/SPAdes-3.11.0-Linux/bin/./metaspades.py --pe1-1 {0}/{1}_trim_clean.PE.1.fastq.gz "
+        print("/home/linking/softwares/SPAdes-3.11.0-Linux/bin/./metaspades.py --pe1-1 "
+              "{0}/{1}_trim_clean.PE.1.fastq.gz "
               "--pe1-2 {0}/{1}_trim_clean.PE.2.fastq.gz -o {0}/{1}.metaspades -t 60 -k 21,33,55,77,99,127".
               format(pwd, name), flush=True, file=my_job)
         os.system("qsub -V -q highmem -pe smp 60 {0}".format(name))
@@ -69,7 +75,8 @@ if args.metaspades:
         print("the assembly of {0} is on highmem".format(name), flush=True)
     elif not highmem_is_free() and not queue_is_busy(100):
         my_job = open("{0}".format(name), 'w')
-        print("/home/linking/softwares/SPAdes-3.11.0-Linux/bin/./metaspades.py --pe1-1 {0}/{1}_trim_clean.PE.1.fastq.gz "
+        print("/home/linking/softwares/SPAdes-3.11.0-Linux/bin/./metaspades.py --pe1-1 "
+              "{0}/{1}_trim_clean.PE.1.fastq.gz "
               "--pe1-2 {0}/{1}_trim_clean.PE.2.fastq.gz -o {0}/{1}.metaspades -t 48 -k 21,33,55,77,99,127".
               format(pwd, name), flush=True, file=my_job)
         os.system("qsub -V {0}".format(name))
@@ -104,8 +111,8 @@ if args.idba:
 
 # Get the assembly job id when running at cluster
 def get_assembly_job_id():
-    os.system('qstat -u "**" > 0.txt')
-    qstat = open('0.txt', 'r')
+    os.system('qstat -u "**" > {0}.2.txt'.format(name))
+    qstat = open('{0}.2.txt'.format(name), 'r')
     job_id = []
     for line in qstat.readlines():
         if line.startswith('job-ID') is False and line.startswith('-') is False:
@@ -124,8 +131,8 @@ print(error_file_name, flush=True)
 # Check if assembly is finished
 # if non finished, check each minute
 def assembly_is_finished():
-    os.system('qstat -u "**" > 0.txt')
-    qstat = open('0.txt', 'r')
+    os.system('qstat -u "**" > {0}.3.txt'.format(name))
+    qstat = open('{0}.3.txt'.format(name), 'r')
     job = []
     for line in qstat.readlines():
         if line.startswith('job-ID') is False and line.startswith('-') is False:
@@ -158,7 +165,7 @@ else:
     exit()
 
 
-os.system('rm 0.txt 1.txt')
+os.system('rm {0}.0.txt {0}.1.txt {0}.2.txt {0}.3.txt'.format(name))
 
 # Delete unnecessary output files and modify scaffolds headers
 if args.metaspades:
@@ -211,15 +218,14 @@ os.system("cluster_usearch_wrev.rb -i {0}_scaffolds_min1000.fasta.genes.faa -k -
 # check if annotation is finished
 # if not finished, check every minutes
 def anno_is_finished():
-    os.system('qstat -u "**" > 2.txt')
-    anno = open('2.txt', 'r')
-    anno_jobs = []
+    os.system('ls {0}*b6 > {0}.5.txt'.format(name))
+    os.system("wc -l {0}.5.txt > {0}.6.txt".format(name))
+    number = []
+    anno = open('{0}.6.txt'.format(name), 'r')
     for line in anno.readlines():
-        if line.startswith('job-ID') is False and line.startswith('-') is False:
-            line = line.strip().split()
-            if line[2] == 'STDIN' and line[3] == '{0}'.format(args.username):
-                anno_jobs.append(line[3])
-    return len(anno_jobs) == 0
+        line = line.strip().split()
+        number.append(line[0])
+    return number[0] == '48'
 
 
 while not anno_is_finished():
@@ -234,7 +240,7 @@ os.system("annolookup.py {0}_scaffolds_min1000.fasta.genes.faa-vs-uni.b6.gz kegg
 os.system("annolookup.py {0}_scaffolds_min1000.fasta.genes.faa-vs-uniprot.b6.gz kegg > "
           "{0}_scaffolds_min1000.fasta.genes.faa-vs-uniprot.b6+".format(name))
 
-os.system('rm 1.txt 2.txt')
+os.system('rm {0}.1.txt {0}.5.txt {0}.6.txt'.format(name))
 
 
 # Send an email when this is done
